@@ -53,6 +53,9 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
 
+import java.net.MalformedURLException;
+import java.net.URL;
+
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -142,10 +145,33 @@ public class DnsManager {
         if (PRIVATE_DNS_MODE_PROVIDER_HOSTNAME == mode) {
             final String specifier = getStringSetting(context.getContentResolver(),
                     PRIVATE_DNS_SPECIFIER);
-            return new PrivateDnsConfig(specifier, null);
+            // Extract hostname from URL if specifier is a full DoH URL
+            final String hostname = extractHostnameFromSpecifier(specifier);
+            return new PrivateDnsConfig(hostname, null);
         }
 
         return new PrivateDnsConfig(useTls);
+    }
+
+    /**
+     * Extract hostname from a specifier that may be a full URL or just a hostname.
+     * For "https://dns.nextdns.io/config" returns "dns.nextdns.io".
+     * For "dns.quad9.net" returns "dns.quad9.net".
+     */
+    private static String extractHostnameFromSpecifier(String specifier) {
+        if (specifier == null || specifier.isEmpty()) {
+            return specifier;
+        }
+        if (specifier.startsWith("https://")) {
+            try {
+                URL url = new URL(specifier);
+                return url.getHost();
+            } catch (MalformedURLException e) {
+                Log.w(TAG, "Failed to parse URL: " + specifier, e);
+                return specifier;
+            }
+        }
+        return specifier;
     }
 
     public static Uri[] getPrivateDnsSettingsUris() {
@@ -198,10 +224,13 @@ public class DnsManager {
         }
 
         private void updateTrackedDnses(String[] ipAddresses, String hostname) {
+            // Normalize hostname: extract from URL if it's a full DoH URL.
+            // This ensures the tracking key matches validation events from DnsResolver.
+            final String normalizedHostname = extractHostnameFromSpecifier(hostname);
             Set<Pair<String, InetAddress>> latestDnses = new HashSet<>();
             for (String ipAddress : ipAddresses) {
                 try {
-                    latestDnses.add(new Pair(hostname,
+                    latestDnses.add(new Pair(normalizedHostname,
                             InetAddresses.parseNumericAddress(ipAddress)));
                 } catch (IllegalArgumentException e) {}
             }
@@ -383,7 +412,11 @@ public class DnsManager {
         paramsParcel.maxSamples = mMaxSamples;
         paramsParcel.servers = makeStrings(lp.getDnsServers());
         paramsParcel.domains = getDomainStrings(lp.getDomains());
-        paramsParcel.tlsName = strictMode ? privateDnsCfg.hostname : "";
+        // Pass the original specifier (may be full URL) to DnsResolver for DoH URL construction.
+        // The hostname extraction for DNS resolution happens in getPrivateDnsConfig().
+        final String originalSpecifier = strictMode
+                ? getStringSetting(mContentResolver, PRIVATE_DNS_SPECIFIER) : "";
+        paramsParcel.tlsName = originalSpecifier != null ? originalSpecifier : "";
         paramsParcel.tlsServers =
                 strictMode ? makeStrings(getReachableAddressList(privateDnsCfg.ips, lp))
                 : useTls ? paramsParcel.servers  // Opportunistic
