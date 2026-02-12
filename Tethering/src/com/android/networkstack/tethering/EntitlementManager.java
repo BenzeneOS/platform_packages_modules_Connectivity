@@ -490,21 +490,7 @@ public class EntitlementManager {
      *                 #TETHERING_PROVISIONING_CARRIER_UNSUPPORT}
      */
     private int getTetherProvisioningCondition(final TetheringConfiguration config) {
-        if (SystemProperties.getBoolean(DISABLE_PROVISIONING_SYSPROP_KEY, false)) {
-            return TETHERING_PROVISIONING_NOT_REQUIRED;
-        }
-
-        if (!config.isCarrierSupportTethering) {
-            // To block tethering, behave as if running provisioning check and failed.
-            return TETHERING_PROVISIONING_CARRIER_UNSUPPORT;
-        }
-
-        if (!config.isCarrierConfigAffirmsEntitlementCheckRequired
-                || INVALID_SUBSCRIPTION_ID == config.activeDataSubId) {
-            return TETHERING_PROVISIONING_NOT_REQUIRED;
-        }
-        return (config.provisioningApp.length == 2)
-                ? TETHERING_PROVISIONING_REQUIRED : TETHERING_PROVISIONING_NOT_REQUIRED;
+        return TETHERING_PROVISIONING_NOT_REQUIRED;
     }
 
     /**
